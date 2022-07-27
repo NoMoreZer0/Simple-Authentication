@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Title</title>
+</head>
+<body>
+<h1> Login </h1>
+<form id="reg-form">
+  <input type="text" autocomplete="off" id="username" placeholder="Username" />
+  <input type="password" autocomplete="off" id="password" placeholder="Password" />
+  <input type="submit" value="Login!" />
+</form>
+
+<script>
+  const form = document.getElementById('reg-form');
+  form.addEventListener('submit', registerUser);
+
+  async function registerUser(event) {
+    event.preventDefault();
+    const username = document.getElementById('username').value;
+    const password = document.getElementById('password').value;
+
+    const result = await fetch('/api/login', {
+      method: 'POST',
+      headers: {
+        'Content-type': 'application/json'
+      },
+      body: JSON.stringify({
+        username,
+        password
+      })
+    }).then((res) => res.json())
+
+    if (result.status === 'ok') {
+      localStorage.setItem('token', result.login_token);
+      localStorage.setItem('username', result.login_username);
+      window.location.replace('http://localhost:3000/profile');
+    } else {
+      alert(result.error);
+    }
+  }
+</script>
+</body>
+</html>
