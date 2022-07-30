@@ -3,12 +3,17 @@ const bodyParser = require('body-parser');
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const nodemailer = require('nodemailer');
 const User = require('./model/user');
-
 const PORT = process.env.PORT || 3000;
 const app = express();
 
 const JWT_SECRET = 'tiyguhija.!.kosda@uysdjikosdauy#!@#!@#fhijsdfuys@hdjfseoirishv';
+
+const { config } = require('dotenv');
+
+config();
+
 
 mongoose.connect('mongodb://localhost:27017/login-app-db')
 
@@ -32,6 +37,62 @@ app.get('/profile', function(req, res) {
 app.get('/login', function(req, res) {
    res.render('login.html');
 });
+
+app.get('/verify/:uniqueString', async(req, res) => {
+    const { uniqueString } = req.params;
+
+    const user = await User.findOne({ uniqueString: uniqueString });
+
+    if (user) {
+        user.confirmed = true;
+        await user.save();
+        res.end("<h1> Email Successfully verified!</h1><br><br><br> " +
+            " <button onclick='makeRedirect()'> Click here to go back to login page! </button>" +
+            " <script> function makeRedirect() {" +
+            " window.location.href = 'http://localhost:3000/login'" +
+            "}</script>")
+    } else {
+        res.json('User not found');
+    }
+});
+
+function randString() { //generating unique string for each user
+    const len = 10;
+    let randStr = '';
+    for (let i = 0; i < len; ++i) {
+        const ch = Math.floor((Math.random()) * 10) + 1;
+        randStr += ch;
+    }
+    return randStr;
+}
+
+const sendEmail = (email, uniqueString) => {
+    var Transport = nodemailer.createTransport({
+        service: 'Gmail',
+        auth: {
+            user: process.env.GMAIL_USER,
+            pass: process.env.GMAIL_PASS,
+        },
+    });
+
+    var mailOptions;
+    const url = `http://localhost:3000/verify/${uniqueString}`;
+    let sender = "Transport CO"
+    mailOptions = {
+        from: sender,
+        to: email,
+        subject: "Email confirmation",
+        html: `Please click this email to confirm your email: <a href="${url}">${url}</a>`
+    };
+
+    Transport.sendMail(mailOptions, function(error, response) {
+        if (error) {
+            console.log(error);
+        } else {
+            console.log("message sent!");
+        }
+    })
+}
 
 app.post('/api/change-password', async (req, res) => {
       const { token, newpassword: plainTextPassword } = req.body;
@@ -66,6 +127,10 @@ app.post('/api/login', async (req, res) => {
       const { username, password } = req.body;
       const user = await User.findOne({ username }).lean();
 
+      if (user.confirmed === false) {
+        return res.json({ status: 'error', error: 'Please confirm your Email!' });
+      }
+
       if (!user) {
          return res.json({ status: 'error', error: 'Invalid username/password'});
       }
@@ -99,17 +164,21 @@ app.post('/api/register', async (req, res) => {
    }
 
    const password = await bcrypt.hash(plainTextPassword, 10);
+   const confirmed = false;
+   const uniqueString = randString();
 
    try {
       const response = await User.create({
-         email,
-         username,
-         password
+          email,
+          username,
+          password,
+          confirmed,
+          uniqueString
       });
    } catch(error) {
       if (error.code === 11000) {
          if (error.keyValue.username == null) { // email already exists
-            return res.json({ status: 'error', error: 'Email already exists'} );
+             return res.json({ status: 'error', error: 'Email already exists'})
          } else { // username already exists
             return res.json({ status: 'error', error: 'Username already exists'} );
          }
@@ -117,8 +186,8 @@ app.post('/api/register', async (req, res) => {
       throw error;
    }
 
+   sendEmail(email, uniqueString);
    res.json({ status: 'ok' });
-
 });
 
 app.listen(PORT, () => {
